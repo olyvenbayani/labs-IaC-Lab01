@@ -1,13 +1,81 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
 Parameters:
-  LatestAmiId:
-    Description: "Latest AMI"
-    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
-    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+  # Parameter for AMI ID
+  AmiId:
+    Type: 'AWS::EC2::Image::Id'
+    Description: 'AMI ID for the EC2 Instance'
+    Default: 'ami-0c55b159cbfafe1f0'  # Replace with a valid default AMI ID
+
+  # Parameter for Instance Type
+  InstanceType:
+    Type: String
+    Description: 'Instance Type for the EC2 Instance'
+    Default: 't2.micro'
+
+  # Parameter for S3 Bucket Name
+  BucketName:
+    Type: String
+    Description: 'Name for the S3 Bucket'
+    Default: 'my-dynamic-bucket-example'
+
+  # Parameter for VPC ID (optional, can be left blank to create a new one)
+  VpcId:
+    Type: String
+    Description: 'VPC ID for the EC2 instance'
+    Default: ''
+
+  # Parameter for Subnet ID (optional, can be left blank to create a new one)
+  SubnetId:
+    Type: String
+    Description: 'Subnet ID for the EC2 instance'
+    Default: ''
+
 Resources:
-  Bucket:
+  # Dynamic S3 Bucket
+  MyBucket:
     Type: 'AWS::S3::Bucket'
-  Instance:
+    Properties:
+      BucketName: !Ref BucketName
+
+  # Dynamic EC2 Instance
+  MyInstance:
     Type: 'AWS::EC2::Instance'
     Properties:
-      InstanceType: "t2.micro"
-      ImageId: !Ref "LatestAmiId"
+      InstanceType: !Ref InstanceType
+      ImageId: !Ref AmiId
+      KeyName: 'my-key-pair'  # Ensure this key pair exists in your region
+      SecurityGroupIds:
+        - sg-12345678  # Replace with a valid security group ID
+      SubnetId: !If
+        - SubnetProvided
+        - !Ref SubnetId
+        - !Ref NewSubnet
+      VpcId: !If
+        - VpcProvided
+        - !Ref VpcId
+        - !Ref NewVpc
+
+  # Conditional creation of a new VPC if VPCId is not provided
+  NewVpc:
+    Type: 'AWS::EC2::VPC'
+    Condition: CreateNewVPC
+    Properties:
+      CidrBlock: '10.0.0.0/16'
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+
+  # Conditional creation of a new Subnet if SubnetId is not provided
+  NewSubnet:
+    Type: 'AWS::EC2::Subnet'
+    Condition: CreateNewSubnet
+    Properties:
+      CidrBlock: '10.0.1.0/24'
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      VpcId: !Ref NewVpc
+
+Conditions:
+  VpcProvided: !Not [ !Equals [ !Ref VpcId, "" ] ]
+  SubnetProvided: !Not [ !Equals [ !Ref SubnetId, "" ] ]
+  CreateNewVPC: !Equals [ !Ref VpcId, "" ]
+  CreateNewSubnet: !Equals [ !Ref SubnetId, "" ]

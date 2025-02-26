@@ -1,81 +1,68 @@
-AWSTemplateFormatVersion: '2010-09-09'
+AWSTemplateFormatVersion: "2010-09-09"
+Description: CloudFormation template to create an S3 bucket and an EC2 instance in an existing VPC and subnet
 
 Parameters:
-  # Parameter for AMI ID
-  AmiId:
-    Type: 'AWS::EC2::Image::Id'
-    Description: 'AMI ID for the EC2 Instance'
-    Default: 'ami-0c55b159cbfafe1f0'  # Replace with a valid default AMI ID
+  ExistingVPC:
+    Type: AWS::EC2::VPC::Id
+    Description: "Select an existing VPC"
 
-  # Parameter for Instance Type
+  ExistingSubnet:
+    Type: AWS::EC2::Subnet::Id
+    Description: "Select an existing Subnet"
+
+  S3BucketName:
+    Type: String
+    Description: "Name of the S3 bucket"
+    MinLength: 3
+    MaxLength: 63
+    AllowedPattern: "^[a-z0-9.-]*$"
+    ConstraintDescription: "Must be between 3 and 63 characters, and can contain lowercase letters, numbers, periods, and hyphens."
+
+  LatestAmiId:
+    Description: "Latest AMI"
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+
   InstanceType:
     Type: String
-    Description: 'Instance Type for the EC2 Instance'
-    Default: 't2.micro'
-
-  # Parameter for S3 Bucket Name
-  BucketName:
-    Type: String
-    Description: 'Name for the S3 Bucket'
-    Default: 'my-dynamic-bucket-example'
-
-  # Parameter for VPC ID (optional, can be left blank to create a new one)
-  VpcId:
-    Type: String
-    Description: 'VPC ID for the EC2 instance'
-    Default: ''
-
-  # Parameter for Subnet ID (optional, can be left blank to create a new one)
-  SubnetId:
-    Type: String
-    Description: 'Subnet ID for the EC2 instance'
-    Default: ''
+    Default: "t2.micro"
 
 Resources:
-  # Dynamic S3 Bucket
-  MyBucket:
-    Type: 'AWS::S3::Bucket'
+  MyS3Bucket:
+    Type: "AWS::S3::Bucket"
     Properties:
-      BucketName: !Ref BucketName
+      BucketName: !Ref S3BucketName
+      AccessControl: Private
 
-  # Dynamic EC2 Instance
-  MyInstance:
-    Type: 'AWS::EC2::Instance'
+  InstanceSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: "Enable SSH access"
+      VpcId: !Ref ExistingVPC
+      SecurityGroupIngress:
+        - IpProtocol: "tcp"
+          FromPort: "22"
+          ToPort: "22"
+          CidrIp: "0.0.0.0/0"  # Adjust as necessary for security
+
+  MyEC2Instance:
+    Type: "AWS::EC2::Instance"
     Properties:
       InstanceType: !Ref InstanceType
-      ImageId: !Ref AmiId
-      KeyName: 'my-key-pair'  # Ensure this key pair exists in your region
+      ImageId: !Ref LatestAmiId
       SecurityGroupIds:
-        - sg-12345678  # Replace with a valid security group ID
-      SubnetId: !If
-        - SubnetProvided
-        - !Ref SubnetId
-        - !Ref NewSubnet
-      VpcId: !If
-        - VpcProvided
-        - !Ref VpcId
-        - !Ref NewVpc
+        - !Ref InstanceSecurityGroup
+      SubnetId: !Ref ExistingSubnet
 
-  # Conditional creation of a new VPC if VPCId is not provided
-  NewVpc:
-    Type: 'AWS::EC2::VPC'
-    Condition: CreateNewVPC
-    Properties:
-      CidrBlock: '10.0.0.0/16'
-      EnableDnsSupport: true
-      EnableDnsHostnames: true
+Outputs:
+  S3BucketNameOutput:
+    Description: "Name of the created S3 bucket"
+    Value: !Ref MyS3Bucket
 
-  # Conditional creation of a new Subnet if SubnetId is not provided
-  NewSubnet:
-    Type: 'AWS::EC2::Subnet'
-    Condition: CreateNewSubnet
-    Properties:
-      CidrBlock: '10.0.1.0/24'
-      AvailabilityZone: !Select [ 0, !GetAZs '' ]
-      VpcId: !Ref NewVpc
+  EC2InstanceId:
+    Description: "ID of the created EC2 instance"
+    Value: !Ref MyEC2Instance
 
-Conditions:
-  VpcProvided: !Not [ !Equals [ !Ref VpcId, "" ] ]
-  SubnetProvided: !Not [ !Equals [ !Ref SubnetId, "" ] ]
-  CreateNewVPC: !Equals [ !Ref VpcId, "" ]
-  CreateNewSubnet: !Equals [ !Ref SubnetId, "" ]
+  VPCId:
+    Description: "ID of the existing VPC"
+    Value: !Ref ExistingVPC
